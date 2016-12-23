@@ -13,7 +13,7 @@ REPO_PK := https://github.com/sifive/riscv-pk
 REPO_QEMU := https://github.com/riscv/riscv-qemu
 
 
-.PHONY: all, toolchain-new, toolchain-make, pk-new, pk-make, qemu-new, qemu-make, run, clean
+.PHONY: all, toolchain-new, toolchain-make, pk-new, pk-make, qemu-new, qemu-make, run
 
 all:
 	@echo
@@ -36,7 +36,8 @@ toolchain-new:
 	@echo "Fetching toolchain..."
 	@git clone $(REPO_TOOLCHAIN)
 	@cd $(DIR_TOOLCHAIN); \
-		git reset --hard 2ffda4e
+		git reset --hard 2ffda4e; \
+		git submodule update --init --recursive
 
 toolchain-make:
 	@echo "Configuring toolchain..."
@@ -52,15 +53,20 @@ pk-new:
 	@echo "Fetching pk..."
 	@git clone $(REPO_PK)
 	@cd $(DIR_PK); \
-		git reset --hard fd688fc
+		git reset --hard fd688fc; \
+		git apply $(DIR_TOP)/pk.patch
 
 pk-make:
-	@echo "Configuring toolchain..."
-	@cd $(DIR_TOOLCHAIN); \
-		./configure --with-xlen=32 --prefix=$(DIR_RISCV)
-	@echo "Building toolchain..."
-	@cd $(DIR_TOOLCHAIN); \
-		make -j4 linux
+	@echo "Configuring pk..."
+	@cd $(DIR_PK); \
+		rm -rf build; \
+		mkdir build; \
+		cd build; \
+		../configure --host=riscv32-unknown-linux-gnu
+	@echo "Building pk..."
+	@cd $(DIR_PK)/build; \
+		make -k
+
 qemu-new:
 	@echo "Removing old qemu repo..."
 	@rm -rf $(DIR_QEMU)
@@ -71,17 +77,12 @@ qemu-new:
 		git fetch origin pull/46/head:working; \
 		git checkout working; \
 		git submodule update --init pixman;\
-		git apply $(DIR_TOP)/qemu.patch
 	
 qemu-make:
 	@echo "Configuring qemu..."
-	@cd $(DIR_QEMU); ./configure --target-list=riscv64-softmmu --disable-werror
+	@cd $(DIR_QEMU); ./configure --target-list=riscv32-softmmu
 	@echo "Building qemu..."
 	@cd $(DIR_QEMU); make -j4
 
 run:
-	@$(DIR_QEMU)/riscv64-softmmu/qemu-system-riscv64 -kernel $(DIR_SIFIVE)/work/riscv-pk/bbl -nographic
-
-clean:
-	@echo "Cleaning..."
-	@rm -rf $(DIR_QEMU) $(DIR_SIFIVE)
+	@$(DIR_QEMU)/riscv32-softmmu/qemu-system-riscv32 -machine sifive -kernel $(DIR_PK)/build/bbl -nographic
